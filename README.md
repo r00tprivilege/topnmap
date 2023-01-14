@@ -6,8 +6,12 @@
 #### Basic Syntax:<br />
 #### ``` nmap [Scan Type] [Options] {targe specification} ```
 ------------------------------------------
-##### Default Help menu
-````
+
+#### Default Help Menu
+<details><summary>NMAP Default Help</summary>
+<p>
+  
+```lua
 Nmap 5.51 ( http://nmap.org )
 Usage: nmap [Scan Type(s)] [Options] {target specification}
 TARGET SPECIFICATION:
@@ -112,10 +116,14 @@ EXAMPLES:
   nmap -v -A scanme.nmap.org
   nmap -v -sn 192.168.0.0/16 10.0.0.0/8
   nmap -v -iR 10000 -Pn -p 80
-````
----------------------------------------------------
+```
+</p>
+</details>
+
+
 ## NSE Scripts:
 ##### The Nmap Scripting Engine (NSE) is one of Nmap’s most powerful and flexible features. It allows users to write (and share) simple scripts to automate a wide variety of networking tasks. Those scripts are then executed in parallel with the speed and efficiency you expect from Nmap.
+
 ---------------------------------------------------
 ## 1. dns-brute.nse
 
@@ -460,6 +468,7 @@ end
 </p>
 </details>
 ----------------------------------------------------
+
 ## 2. http-enum.nse
 
 ##### Enumerates directories used by popular web applications and servers.
