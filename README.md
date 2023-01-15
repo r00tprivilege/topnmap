@@ -1001,35 +1001,584 @@ end
 </details>
 ----------------------------------------------------
   
-## 3. name.nse
+## 3. ssh-brute.nse
 
-##### General Description
+##### Simply putting this script Performs brute-force password guessing against ssh servers
+
 ```
-Categories: will be added
-Download: will be added
+Categories: brute, intrusive
+Download: https://svn.nmap.org/nmap/scripts/ssh-brute.nse
 ```
-<details><summary>name.nse</summary>
+<details><summary>ssh-brute.nse</summary>
 <p>
   
 ```lua
-will be added
+local shortport = require "shortport"
+local stdnse = require "stdnse"
+local brute = require "brute"
+local creds = require "creds"
+
+local libssh2_util = require "libssh2-utility"
+
+description = [[
+Performs brute-force password guessing against ssh servers.
+]]
+
+---
+-- @usage
+--   nmap -p 22 --script ssh-brute --script-args userdb=users.lst,passdb=pass.lst \
+--       --script-args ssh-brute.timeout=4s <target>
+--
+-- @output
+-- 22/ssh open  ssh
+-- | ssh-brute:
+-- |  Accounts
+-- |    username:password
+-- |  Statistics
+-- |_   Performed 32 guesses in 25 seconds.
+--
+-- @args ssh-brute.timeout    Connection timeout (default: "5s")
+
+author = "Devin Bjelland"
+license = "Same as Nmap--See https://nmap.org/book/man-legal.html"
+categories = {
+  'brute',
+  'intrusive',
+}
+
+portrule = shortport.ssh
+
+local arg_timeout = stdnse.get_script_args(SCRIPT_NAME .. ".timeout") or "5s"
+
+Driver = {
+  new = function (self, host, port, options)
+    stdnse.debug(2, "creating brute driver")
+    local o = {
+      helper = libssh2_util.SSHConnection:new(),
+    }
+    setmetatable(o, self)
+    self.__index = self
+    o.host = host
+    o.port = port
+    o.options = options
+    return o
+  end,
+
+  connect = function (self)
+    local status, err = self.helper:connect_pcall(self.host, self.port)
+    if not status then
+      stdnse.debug(2, "libssh2 error: %s", self.helper.session)
+      local err = brute.Error:new(self.helper.session)
+      err:setReduce(true)
+      return false, err
+    elseif not self.helper.session then
+      stdnse.debug(2, "failure to connect: %s", err)
+      local err = brute.Error:new(err)
+      err:setAbort(true)
+      return false, err
+    else
+      self.helper:set_timeout(self.options.ssh_timeout)
+      return true
+    end
+  end,
+
+  login = function (self, username, password)
+    stdnse.verbose(1, "Trying username/password pair: %s:%s", username, password)
+    local status, resp = self.helper:password_auth(username, password)
+    if status then
+      return true, creds.Account:new(username, password, creds.State.VALID)
+    end
+    return false, brute.Error:new "Incorrect password"
+  end,
+
+  disconnect = function (self)
+    return self.helper:disconnect()
+  end,
+}
+
+local function password_auth_allowed (host, port)
+  local helper = libssh2_util.SSHConnection:new()
+  if not helper:connect(host, port) then
+    return "Failed to connect to ssh server"
+  end
+  local methods = helper:list "root"
+  if methods then
+    for _, value in pairs(methods) do
+      if value == "password" then
+        return true
+      end
+    end
+  end
+  return false
+end
+
+function action (host, port)
+  local timems = stdnse.parse_timespec(arg_timeout) --todo: use this!
+  local ssh_timeout = 1000 * timems
+  if password_auth_allowed(host, port) then
+    local options = {
+      ssh_timeout = ssh_timeout,
+    }
+    local engine = brute.Engine:new(Driver, host, port, options)
+    engine.options.script_name = SCRIPT_NAME
+    local _, result = engine:start()
+    return result
+  else
+    return "Password authentication not allowed"
+  end
+end
+
 ```
 </p>
 </details>
 ----------------------------------------------------
   
-## 4. name.nse
+## 4. vulscan.nse
 
-##### General Description
+##### Vulscan is a module which enhances nmap to a vulnerability scanner. The
+nmap option -sV enables version detection per service which is used to
+determine potential flaws according to the identified product. The data
+is looked up in an offline version of VulDB.
+
 ```
 Categories: will be added
-Download: will be added
+Download: https://github.com/scipag/vulscan/releases
+Download: https://www.computec.ch/projekte/vulscan/
 ```
-<details><summary>name.nse</summary>
+<details><summary>vulscan-config</summary>
 <p>
-  
+
+
+#### Installation
+##### Please install the files into the following folder of your Nmap
+installation:
+```
+Nmap\scripts\vulscan\*
+```
+#### Usage
+##### You have to run the following minimal command to initiate a simple vulnerability scan:
+
+```
+nmap -sV --script=vulscan/vulscan.nse www.example.com
+```
+
+#### Vulnerability Database
+##### There are the following pre-installed databases available at the moment:
+
+##### scipvuldb.csv - https://vuldb.com
+##### cve.csv - https://cve.mitre.org
+##### securityfocus.csv - https://www.securityfocus.com/bid/
+##### xforce.csv - https://exchange.xforce.ibmcloud.com/
+##### expliotdb.csv - https://www.exploit-db.com
+##### openvas.csv - http://www.openvas.org
+##### securitytracker.csv - https://www.securitytracker.com (end-of-life)
+##### osvdb.csv - http://www.osvdb.org (end-of-life)
+
+#### You may execute vulscan with the following argument to use a single database:
+```
+--script-args vulscandb=your_own_database
+```
+
+#### It is also possible to create and reference your own databases. This requires to create a database file, which has the following structure:
+```
+<id>;<title>
+```
+
+##### Just execute vulscan like you would by refering to one of the pre-delivered databases. Feel free to share your own database and vulnerability connection with me, to add it to the official repository.
+
+
+#### Update Database
+##### The vulnerability databases are updated and assembled on a regularly basis. To support the latest disclosed vulnerabilities, keep your local vulnerability databases up-to-date.
+
+##### To automatically update the databases, simply set execution permissions to the update.sh file and run it:
+```
+chmod 744 update.sh
+./update.sh
+```
+
+##### If you want to manually update your databases, go to the following web site and download these files:
+- https://www.computec.ch/projekte/vulscan/download/cve.csv
+- https://www.computec.ch/projekte/vulscan/download/exploitdb.csv
+- https://www.computec.ch/projekte/vulscan/download/openvas.csv
+- https://www.computec.ch/projekte/vulscan/download/osvdb.csv
+- https://www.computec.ch/projekte/vulscan/download/scipvuldb.csv
+- https://www.computec.ch/projekte/vulscan/download/securityfocus.csv
+- https://www.computec.ch/projekte/vulscan/download/securitytracker.csv
+- https://www.computec.ch/projekte/vulscan/download/xforce.csv
+
+##### Copy the files into your vulscan folder:
+```
+/vulscan/
+```
+
+#### Version Detection
+##### If the version detection was able to identify the software version and the vulnerability database is providing such details, also this data is matched. 
+##### Disabling this feature might introduce false-positive but might also eliminate false-negatives and increase performance slighty. If you want to disable additional version matching, use the following argument:
+```
+--script-args vulscanversiondetection=0
+```
+##### Version detection of vulscan is only as good as Nmap version detection and the vulnerability database entries are. Some databases do not provide conclusive version information, which may lead to a lot of false-positives (as can be seen for Apache servers).
+
+#### Match Priority
+##### The script is trying to identify the best matches only. If no positive match could been found, the best possible match (with might be a false-positive) is put on display.
+
+##### If you want to show all matches, which might introduce a lot of false-positives but might be useful for further investigation, use the following argument:
+```
+--script-args vulscanshowall=1
+```
+
+#### Interactive Mode
+##### The interactive mode helps you to override version detection results for every port. Use the following argument to enable the interactive mode:
+```
+--script-args vulscaninteractive=1
+```
+
+#### Reporting
+##### All matching results are printed one by line. The default layout for this is:
+```
+[{id}] {title}\n
+```
+##### It is possible to use another pre-defined report structure with the following argument:
+```
+--script-args vulscanoutput=details
+--script-args vulscanoutput=listid
+--script-args vulscanoutput=listlink
+--script-args vulscanoutput=listtitle
+```
+##### You may enforce your own report structure by using the following argument (some examples):
+```
+--script-args vulscanoutput='{link}\n{title}\n\n'
+--script-args vulscanoutput='ID: {id} - Title: {title} ({matches})\n'
+--script-args vulscanoutput='{id} | {product} | {version}\n'
+```
+##### Supported are the following elements for a dynamic report template:
+```
+{id} - ID of the vulnerability
+{title} - Title of the vulnerability
+{matches} - Count of matches
+{product} - Matched product string(s)
+{version} - Matched version string(s)
+{link} - Link to the vulnerability database entry
+\n - Newline
+\t - Tab
+```
+##### Every default database comes with an url and a link, which is used during the scanning and might be accessed as {link} within the customized report template. To use custom database links, use the following argument:
+```
+--script-args "vulscandblink=http://example.org/{id}"
+```
+#### Disclaimer
+##### Keep in mind that this kind of derivative vulnerability scanning heavily relies on the confidence of the version detection of nmap, the amount of documented vulnerabilities and the accuracy of pattern matching. The existence of potential flaws is not verified with additional scanning nor exploiting techniques.
+</p>
+</details>
+
+
+<details><summary>vulscan.nse</summary>
+<p>
+
 ```lua
-will be added
+author = "Marc Ruef, marc.ruef-at-computec.ch, https://www.computec.ch/mruef/"
+license = "Same as Nmap--See https://nmap.org/book/man-legal.html"
+categories = {"default", "safe", "vuln"}
+
+local stdnse = require("stdnse")
+local have_stringaux, stringaux = pcall(require, "stringaux")
+local strsplit = (have_stringaux and stringaux or stdnse).strsplit
+
+portrule = function(host, port)
+	if port.version.product ~= nil and port.version.product ~= "" then
+		return true
+	else
+		stdnse.print_debug(1, "vulscan: No version detection data available. Analysis not possible.")
+	end
+end
+
+action = function(host, port)
+	local prod = port.version.product	-- product name
+	local ver = port.version.version	-- product version
+	local struct = "[{id}] {title}\n"	-- default report structure
+	local db = {}				-- vulnerability database
+	local db_link = ""			-- custom link for vulnerability databases
+	local vul = {}				-- details for the vulnerability
+	local v_count = 0			-- counter for the vulnerabilities
+	local s = ""				-- the output string
+
+	stdnse.print_debug(1, "vulscan: Found service " .. prod)
+
+	-- Go into interactive mode
+	if nmap.registry.args.vulscaninteractive == "1" then
+		stdnse.print_debug(1, "vulscan: Enabling interactive mode ...")
+		print("The scan has determined the following product:")
+		print(prod)
+		print("Press Enter to accept. Define new string to override.")
+		local prod_override = io.stdin:read'*l'
+
+		if string.len(prod_override) ~= 0 then
+			prod = prod_override
+			stdnse.print_debug(1, "vulscan: Product overwritten as " .. prod)
+		end
+	end
+
+	-- Read custom report structure
+	if nmap.registry.args.vulscanoutput ~= nil then
+		if nmap.registry.args.vulscanoutput == "details" then
+			struct = "[{id}] {title}\nMatches: {matches}, Prod: {product}, Ver: {version}\n{link}\n\n"
+		elseif nmap.registry.args.vulscanoutput == "listid" then
+			struct = "{id}\n"
+		elseif nmap.registry.args.vulscanoutput == "listlink" then
+			struct = "{link}\n"
+		elseif nmap.registry.args.vulscanoutput == "listtitle" then
+			struct = "{title}\n"
+		else
+			struct = nmap.registry.args.vulscanoutput
+		end
+
+		stdnse.print_debug(1, "vulscan: Custom output structure defined as " .. struct)
+	end
+
+	-- Read custom database link
+	if nmap.registry.args.vulscandblink ~= nil then
+		db_link = nmap.registry.args.vulscandblink
+		stdnse.print_debug(1, "vulscan: Custom database link defined as " .. db_link)
+	end
+
+	if nmap.registry.args.vulscandb then
+		stdnse.print_debug(1, "vulscan: Using single mode db " .. nmap.registry.args.vulscandb .. " ...")
+		vul = find_vulnerabilities(prod, ver, nmap.registry.args.vulscandb)
+		if #vul > 0 then
+			s = s .. nmap.registry.args.vulscandb
+			if db_link ~= "" then s = s .. " - " .. db_link end
+			s = s .. ":\n" .. prepare_result(vul, struct, db_link) .. "\n\n"
+		end
+	else
+		-- Add your own database, if you want to include it in the multi db mode
+		db[1] = {name="VulDB",			file="scipvuldb.csv",		url="https://vuldb.com",			link="https://vuldb.com/id.{id}"}
+		db[2] = {name="MITRE CVE",		file="cve.csv",			url="https://cve.mitre.org",			link="https://cve.mitre.org/cgi-bin/cvename.cgi?name={id}"}
+		db[3] = {name="SecurityFocus",		file="securityfocus.csv",	url="https://www.securityfocus.com/bid/",	link="https://www.securityfocus.com/bid/{id}"}
+		db[4] = {name="IBM X-Force",		file="xforce.csv",		url="https://exchange.xforce.ibmcloud.com",	link="https://exchange.xforce.ibmcloud.com/vulnerabilities/{id}"}
+		db[5] = {name="Exploit-DB",		file="exploitdb.csv",		url="https://www.exploit-db.com",		link="https://www.exploit-db.com/exploits/{id}"}
+		db[6] = {name="OpenVAS (Nessus)",	file="openvas.csv",		url="http://www.openvas.org",			link="https://www.tenable.com/plugins/nessus/{id}"}
+		db[7] = {name="SecurityTracker",	file="securitytracker.csv",	url="https://www.securitytracker.com",		link="https://www.securitytracker.com/id/{id}"}
+		db[8] = {name="OSVDB",			file="osvdb.csv",		url="http://www.osvdb.org",			link="http://www.osvdb.org/{id}"}
+
+		stdnse.print_debug(1, "vulscan: Using multi db mode (" .. #db .. " databases) ...")
+		for i,v in ipairs(db) do
+			vul = find_vulnerabilities(prod, ver, v.file)
+
+			s = s .. v.name .. " - " .. v.url .. ":\n"
+			if #vul > 0 then
+					v_count = v_count + #vul
+					s = s .. prepare_result(vul, struct, v.link) .. "\n"
+			else
+					s = s .. "No findings\n\n"
+			end
+
+			stdnse.print_debug(1, "vulscan: " .. #vul .. " matches in " .. v.file)
+		end
+
+		stdnse.print_debug(1, "vulscan: " .. v_count .. " matches in total")
+	end
+
+	if s then
+		return s
+	end
+end
+
+-- Find the product matches in the vulnerability databases
+function find_vulnerabilities(prod, ver, db)
+	local v = {}			-- matching vulnerabilities
+	local v_id			-- id of vulnerability
+	local v_title			-- title of vulnerability
+	local v_title_lower		-- title of vulnerability in lowercase for speedup
+	local v_found			-- if a match could be found
+
+	-- Load database
+	local v_entries = read_from_file("scripts/vulscan/" .. db)
+
+	-- Clean useless dataparts (speeds up search and improves accuracy)
+	prod = string.gsub(prod, " httpd", "")
+	prod = string.gsub(prod, " smtpd", "")
+	prod = string.gsub(prod, " ftpd", "")
+
+	local prod_words = strsplit(" ", prod)
+
+	stdnse.print_debug(1, "vulscan: Starting search of " .. prod ..
+		" in " .. db ..
+		" (" .. #v_entries .. " entries) ...")
+
+	-- Iterate through the vulnerabilities in the database
+	for i=1, #v_entries, 1 do
+		v_id		= extract_from_table(v_entries[i], 1, ";")
+		v_title		= extract_from_table(v_entries[i], 2, ";")
+
+		if type(v_title) == "string" then
+			v_title_lower = string.lower(v_title)
+
+			-- Find the matches for the database entry
+			for j=1, #prod_words, 1 do
+				v_found = string.find(v_title_lower, escape(string.lower(prod_words[j])), 1)
+				if type(v_found) == "number" then
+					if #v == 0 then
+						-- Initiate table
+						v[1] = {
+							id		= v_id,
+							title	= v_title,
+							product	= prod_words[j],
+							version	= "",
+							matches	= 1
+						}
+					elseif v[#v].id ~= v_id then
+						-- Create new entry
+						v[#v+1] = {
+							id		= v_id,
+							title	= v_title,
+							product	= prod_words[j],
+							version	= "",
+							matches	= 1
+						}
+					else
+						-- Add to current entry
+						v[#v].product = v[#v].product .. " " .. prod_words[j]
+						v[#v].matches = v[#v].matches+1
+					end
+
+					stdnse.print_debug(2, "vulscan: Match v_id " .. v_id ..
+						" -> v[" .. #v .. "] " ..
+						"(" .. v[#v].matches .. " match) " ..
+						"(Prod: " .. prod_words[j] .. ")")
+				end
+			end
+
+			-- Additional version matching
+			if nmap.registry.args.vulscanversiondetection ~= "0" and ver ~= nil and ver ~= "" then
+				if v[#v] ~= nil and v[#v].id == v_id then
+					for k=0, string.len(ver)-1, 1 do
+						v_version = string.sub(ver, 1, string.len(ver)-k)
+						v_found = string.find(string.lower(v_title), string.lower(" " .. v_version), 1)
+
+						if type(v_found) == "number" then
+							v[#v].version = v[#v].version .. v_version .. " "
+							v[#v].matches = v[#v].matches+1
+
+							stdnse.print_debug(2, "vulscan: Match v_id " .. v_id ..
+								" -> v[" .. #v .. "] " ..
+								"(" .. v[#v].matches .. " match) " ..
+								"(Version: " .. v_version .. ")")
+						end
+					end
+				end
+			end
+		end
+	end
+
+	return v
+end
+
+-- Prepare the resulting matches
+function prepare_result(v, struct, link)
+	local grace = 0				-- grace trigger
+	local match_max = 0			-- counter for maximum matches
+	local match_max_title = ""	-- title of the maximum match
+	local s = ""				-- the output string
+
+	-- Search the entries with the best matches
+	if #v > 0 then
+		-- Find maximum matches
+		for i=1, #v, 1 do
+			if v[i].matches > match_max then
+				match_max = v[i].matches
+				match_max_title = v[i].title
+			end
+		end
+
+		stdnse.print_debug(2, "vulscan: Maximum matches of a finding are " ..
+			match_max .. " (" .. match_max_title .. ")")
+
+		if match_max > 0 then
+			for matchpoints=match_max, 1, -1 do
+				for i=1, #v, 1 do
+					if v[i].matches == matchpoints then
+						stdnse.print_debug(2, "vulscan: Setting up result id " .. i)
+						s = s .. report_parsing(v[i], struct, link)
+					end
+				end
+
+				if nmap.registry.args.vulscanshowall ~= "1" and s ~= "" then
+					-- If the next iteration shall be approached (increases matches)
+					if grace == 0 then
+						stdnse.print_debug(2, "vulscan: Best matches found in 1st pass. Going to use 2nd pass ...")
+						grace = grace+1
+					elseif nmap.registry.args.vulscanshowall ~= "1" then
+						break
+					end
+				end
+			end
+		end
+	end
+
+	return s
+end
+
+-- Parse the report output structure
+function report_parsing(v, struct, link)
+	local s = struct
+
+	--database data (needs to be first)
+	s = string.gsub(s, "{link}", escape(link))
+
+	--layout elements (needs to be second)
+	s = string.gsub(s, "\\n", "\n")
+	s = string.gsub(s, "\\t", "\t")
+
+	--vulnerability data (needs to be third)
+	s = string.gsub(s, "{id}", escape(v.id))
+	s = string.gsub(s, "{title}", escape(v.title))
+	s = string.gsub(s, "{matches}", escape(v.matches))
+	s = string.gsub(s, "{product}", escape(v.product))	
+	s = string.gsub(s, "{version}", escape(v.version))
+
+	return s
+end
+
+-- Get the row of a CSV file
+function extract_from_table(line, col, del)
+	local val = strsplit(del, line)
+
+	if type(val[col]) == "string" then
+		return val[col]
+	end
+end
+
+-- Read a file
+function read_from_file(file)
+	local filepath = nmap.fetchfile(file)
+
+	if filepath then
+		local f, err, _ = io.open(filepath, "r")
+		if not f then
+			stdnse.print_debug(1, "vulscan: Failed to open file" .. file)
+		end
+
+		local line, ret = nil, {}
+		while true do
+			line = f:read()
+			if not line then break end
+			ret[#ret+1] = line
+		end
+
+		f:close()
+
+		return ret
+	else
+		stdnse.print_debug(1, "vulscan: File " .. file .. " not found")
+		return ""
+	end
+end
+
+-- We don't like unescaped things
+function escape(s)
+	s = string.gsub(s, "%%", "%%%%")
+	return s
+end
 ```
 </p>
 </details>
@@ -1039,9 +1588,20 @@ will be added
 
 ##### General Description
 ```
-Categories: will be added
-Download: will be added
+Categories: intrusive, brute
+Download: https://svn.nmap.org/nmap/scripts/smb-brute.nse
 ```
+
+#### Example Usage
+```
+nmap --script smb-brute.nse -p445 <host>
+sudo nmap -sU -sS --script smb-brute.nse -p U:137,T:139 <host>
+```
+
+##### Attempts to guess username/password combinations over SMB, storing discovered combinations for use in other scripts. Every attempt will be made to get a valid list of users and to verify each username before actually using them. When a username is discovered, besides being printed, it is also saved in the Nmap registry so other Nmap scripts can use it. That means that if you're going to run smb-brute.nse, you should run other smb scripts you want. This checks passwords in a case-insensitive way, determining case after a password is found, for Windows versions before Vista.
+##### This script is specifically targeted towards security auditors or penetration testers. One example of its use, suggested by Brandon Enright, was hooking up smb-brute.nse to the database of usernames and passwords used by the Conficker worm (the password list can be found at http://www.skullsecurity.org/wiki/index.php/Passwords, among other places. Then, the network is scanned and all systems that would be infected by Conficker are discovered.
+##### From the penetration tester perspective its use is pretty obvious. By discovering weak passwords on SMB, a protocol that's well suited for bruteforcing, access to a system can be gained. Further, passwords discovered against Windows with SMB might also be used on Linux or MySQL or custom Web applications. Discovering a password greatly beneficial for a pen-tester.
+
 <details><summary>name.nse</summary>
 <p>
   
@@ -1051,4 +1611,6 @@ will be added
 </p>
 </details>
 ----------------------------------------------------
+===========================================================
+
 
