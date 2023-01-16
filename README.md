@@ -1584,7 +1584,7 @@ end
 </details>
 ----------------------------------------------------
   
-## 5. name.nse
+## 5. smb-brute.nse
 
 ##### General Description
 ```
@@ -1602,7 +1602,7 @@ sudo nmap -sU -sS --script smb-brute.nse -p U:137,T:139 <host>
 ##### This script is specifically targeted towards security auditors or penetration testers. One example of its use, suggested by Brandon Enright, was hooking up smb-brute.nse to the database of usernames and passwords used by the Conficker worm (the password list can be found at http://www.skullsecurity.org/wiki/index.php/Passwords, among other places. Then, the network is scanned and all systems that would be infected by Conficker are discovered.
 ##### From the penetration tester perspective its use is pretty obvious. By discovering weak passwords on SMB, a protocol that's well suited for bruteforcing, access to a system can be gained. Further, passwords discovered against Windows with SMB might also be used on Linux or MySQL or custom Web applications. Discovering a password greatly beneficial for a pen-tester.
 
-<details><summary>name.nse</summary>
+<details><summary>smb-brute.nse</summary>
 <p>
   
 ```lua
