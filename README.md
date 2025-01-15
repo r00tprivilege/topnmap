@@ -1,11 +1,11 @@
 #  NMAP & Its useful cheatsheet
 ## User manual &amp; top nse scripts of NMAP
-------------------------------------------
+---
 #### Nmap (“Network Mapper”) is a free and open-source utility for network discovery and security auditing. Many systems and network administrators also find it useful for tasks such as network inventory, managing service upgrade schedules, and monitoring host or service uptime. It uses raw IP packets in novel ways to determine what hosts are available on the network, what services (application name and version) those hosts are offering, what operating systems (and OS versions) they are running, what type of packet filters/firewalls are in use, and dozens of other characteristics.
-------------------------------------------
+---
 #### Basic Syntax:<br />
 #### ``` nmap [Scan Type] [Options] {targe specification} ```
-------------------------------------------
+---
 
 #### Default Help Menu
 <details><summary>NMAP Default Help</summary>
@@ -124,7 +124,7 @@ EXAMPLES:
 ## NSE Scripts:
 ##### The Nmap Scripting Engine (NSE) is one of Nmap’s most powerful and flexible features. It allows users to write (and share) simple scripts to automate a wide variety of networking tasks. Those scripts are then executed in parallel with the speed and efficiency you expect from Nmap.
 
----------------------------------------------------
+---
 ## 1. dns-brute.nse
 
 ##### Attempts to enumerate DNS hostnames by brute force guessing of common subdomains.
@@ -1708,7 +1708,7 @@ determined with a fairly efficient bruteforce. For example, if the actual passwo
 --       The default is 3, which will only trigger strict lockouts, but will also bump the
 --       canary account up far enough to detect a lockout well before other accounts are
 --       hit.
------------------------------------------------------------------------
+----
 
 
 author = "Ron Bowes"
